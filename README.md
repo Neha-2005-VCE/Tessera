@@ -45,7 +45,7 @@
 
 ### 2. Setup
 
-\`\`\`bash
+```bash
 # Clone the repo
 git clone https://github.com/NikitaKiran/coachinproject.git
 cd coachinproject
@@ -54,21 +54,21 @@ cd coachinproject
 # Setup PostgreSQL
 # Create DB and add details in \`.env\`
 CREATE DATABASE tessera_db;
-\`\`\`
+```
 
 ### 3. Configure `.env`
 
-\`\`\`env
+```env
 PORT=3001
 DATABASE_URL=postgresql://username:password@localhost:5432/tessera_db
 JWT_SECRET=your_super_secret
-\`\`\`
+```
 
 ## 🚀 Run the App
 
 ### Development Mode
 
-\`\`\`bash
+```bash
 # Start Flask AI API
 cd FlaskEndpoint
 python app.py
@@ -76,7 +76,7 @@ python app.py
 # Start Node.js + React concurrently
 cd ..
 npm run dev
-\`\`\`
+```
 
 
 
