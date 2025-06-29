@@ -1,16 +1,37 @@
 import express from 'express';
 import pool from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
+import crypto from 'crypto';
+import axios from 'axios';
 
 const router = express.Router();
 
-// Get career recommendations for user
 router.get('/career-recommendations', authenticateToken, async (req, res) => {
   try {
-    // Check if user has career recommendations cached
-    const cachedResult = await pool.query(
-      'SELECT * FROM career_recommendations WHERE user_id = $1 ORDER BY match_percentage DESC',
+    // Step 1: Get current skills of user
+    const skillsResult = await pool.query(
+      'SELECT title, category, strength FROM skills WHERE user_id = $1',
       [req.user.id]
+    );
+
+    const userSkills = skillsResult.rows.map(skill => ({
+      title: skill.title,
+      category: skill.category,
+      strength: skill.strength
+    }));
+
+    if (userSkills.length === 0) return res.json([]);
+
+    // Step 2: Hash sorted skills for caching
+    const sortedSkills = [...userSkills].sort((a, b) => a.title.localeCompare(b.title));
+    const skillsHash = crypto.createHash('sha256').update(JSON.stringify(sortedSkills)).digest('hex');
+
+    // Step 3: Check if we already cached this skills version
+    const cachedResult = await pool.query(
+      `SELECT * FROM career_recommendations 
+       WHERE user_id = $1 AND skills_hash = $2 
+       ORDER BY match_percentage DESC`,
+      [req.user.id, skillsHash]
     );
 
     if (cachedResult.rows.length > 0) {
@@ -23,91 +44,71 @@ router.get('/career-recommendations', authenticateToken, async (req, res) => {
         salaryRange: row.salary_range,
         demandLevel: row.demand_level
       }));
-
       return res.json(recommendations);
     }
 
-    // Generate new recommendations based on user skills
-    const skillsResult = await pool.query(
-      'SELECT title, category, strength FROM skills WHERE user_id = $1',
-      [req.user.id]
+    // Step 4: Call Flask Gemini API to generate fresh recommendations
+    const flaskResponse = await axios.post(
+      'http://127.0.0.1:5000/career_recommendations',
+      { skills: userSkills }
     );
 
-    if (skillsResult.rows.length === 0) {
-      return res.json([]);
-    }
+    const newRecs = flaskResponse.data;
 
-    // Mock career recommendations generation
-    const mockRecommendations = [
-      {
-        title: 'Senior Frontend Developer',
-        description: 'Lead frontend development projects using modern frameworks and ensure exceptional user experiences',
-        nextSkills: ['Vue.js', 'Angular', 'WebGL', 'Performance Optimization'],
-        growthPath: 'Frontend Developer → Senior Frontend → Lead Frontend → Engineering Manager',
-        matchPercentage: 92,
-        salaryRange: '$80k - $120k',
-        demandLevel: 'High'
-      },
-      {
-        title: 'Full Stack Developer',
-        description: 'Build end-to-end web applications handling both frontend and backend development',
-        nextSkills: ['Microservices', 'GraphQL', 'Redis', 'Message Queues'],
-        growthPath: 'Full Stack Developer → Senior Full Stack → Solutions Architect → CTO',
-        matchPercentage: 78,
-        salaryRange: '$75k - $130k',
-        demandLevel: 'High'
-      },
-      {
-        title: 'DevOps Engineer',
-        description: 'Streamline development workflows and manage cloud infrastructure for scalable applications',
-        nextSkills: ['Kubernetes', 'Terraform', 'CI/CD Pipelines', 'Monitoring'],
-        growthPath: 'DevOps Engineer → Senior DevOps → Platform Engineer → Infrastructure Architect',
-        matchPercentage: 65,
-        salaryRange: '$85k - $140k',
-        demandLevel: 'High'
-      },
-      {
-        title: 'Product Manager (Technical)',
-        description: 'Bridge technical and business teams to drive product strategy and development',
-        nextSkills: ['Product Analytics', 'User Research', 'Market Analysis', 'Roadmap Planning'],
-        growthPath: 'Technical PM → Senior PM → Director of Product → VP of Product',
-        matchPercentage: 58,
-        salaryRange: '$90k - $150k',
-        demandLevel: 'Medium'
-      }
-    ];
-
-    // Cache recommendations in database
+    // Step 5: Save new recommendations in DB with hash
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      
-      // Clear existing recommendations
+
+      // Remove old recommendations for this user
       await client.query('DELETE FROM career_recommendations WHERE user_id = $1', [req.user.id]);
-      
-      // Insert new recommendations
-      for (const rec of mockRecommendations) {
+
+      for (const rec of newRecs) {
+        // Validate nextSkills format
+        let nextSkills = rec.nextSkills;
+        if (!Array.isArray(nextSkills)) {
+          console.warn('⚠️ nextSkills not an array:', nextSkills);
+          try {
+            nextSkills = JSON.parse(nextSkills);
+          } catch (e) {
+            nextSkills = [];
+          }
+        }
+
         await client.query(
           `INSERT INTO career_recommendations 
-           (user_id, title, description, next_skills, growth_path, match_percentage, salary_range, demand_level)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [req.user.id, rec.title, rec.description, rec.nextSkills, rec.growthPath, 
-           rec.matchPercentage, rec.salaryRange, rec.demandLevel]
+           (user_id, title, description, next_skills, growth_path, match_percentage, salary_range, demand_level, skills_hash)
+           VALUES ($1, $2, $3, $4::text[], $5, $6, $7, $8, $9)`,
+          [
+            req.user.id,
+            rec.title,
+            rec.description,
+            nextSkills,
+            rec.growthPath,
+            rec.matchPercentage,
+            rec.salaryRange,
+            rec.demandLevel,
+            skillsHash
+          ]
         );
       }
-      
+
       await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('💥 DB error during insertion:', err);
+      return res.status(500).json({ error: 'Database error inserting career recommendations' });
     } finally {
       client.release();
     }
 
-    res.json(mockRecommendations);
+    // Step 6: Return new recommendations
+    res.json(newRecs);
   } catch (error) {
-    console.error('Career recommendations error:', error);
+    console.error('Career recommendations error:', error?.response?.data || error.message || error);
     res.status(500).json({ error: 'Failed to fetch career recommendations' });
   }
 });
-
 // Get user statistics
 router.get('/stats', authenticateToken, async (req, res) => {
   try {

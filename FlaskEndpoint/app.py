@@ -15,6 +15,12 @@ from skimage.metrics import structural_similarity as ssim
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from faster_whisper import WhisperModel
 import re
+import google.generativeai as genai
+from PIL import Image
+
+genai.configure(api_key="AIzaSyCImieoM8T1olcyduIaBQSmvLgeAF2o_RI")
+
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 app = Flask(__name__)
 CORS(app)
@@ -24,7 +30,7 @@ CORS(app)
 # --------------------------
 
 
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 TOGETHER_API_KEY = "094ad5f71e654a605fb914359d9cda2f11e66f55e00d8d9ffc416d90d11fd723"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -56,6 +62,11 @@ def convert_pdf_to_images(pdf_path):
             image_data_urls.append(f"data:image/png;base64,{base64_image}")
         os.remove(temp_image_path)
     return image_data_urls
+
+def base64_to_pil(base64_data_url):
+    header, base64_data = base64_data_url.split(",", 1)
+    image_data = base64.b64decode(base64_data)
+    return Image.open(io.BytesIO(image_data))
 
 def get_image(image_path: str) -> str:
     """Convert an image file to a Base64-encoded Data URL."""
@@ -90,7 +101,15 @@ def analyze_with_openrouter(prompt_text, image_data_url):
         print("Error in OpenRouter response:", e)
         return f"Error processing: {e}"
     
-
+def analyze_with_gemini(prompt_text, image_data_url):
+    print("Calling Gemini with prompt:", prompt_text)
+    try:
+        image = base64_to_pil(image_data_url)
+        response = model.generate_content([image, prompt_text])
+        return response.text
+    except Exception as e:
+        print("Gemini error:", e)
+        return f"Error from Gemini: {e}"
 
 def process_video_file(file_obj):
     """
@@ -114,28 +133,7 @@ def process_video_file(file_obj):
 
     # Helper: get a description of a frame by calling OpenRouter
     def get_image_description(image_data_url):
-        TEXT = "Describe this frame in detail."
-        response = requests.post(
-            url="https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            data=json.dumps({
-                "model": "mistralai/mistral-small-3.1-24b-instruct:free",
-                "messages": [
-                    {"role": "user", "content": [
-                        {"type": "text", "text": TEXT},
-                        {"type": "image_url", "image_url": {"url": image_data_url}},
-                    ]}
-                ],
-            }),
-        )
-        try:
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-        except Exception as e:
-            return f"Error in image description: {e}"
+        return analyze_with_gemini("Describe this frame in detail.", image_data_url)
 
     # Open the video using OpenCV
     cap = cv2.VideoCapture(local_path)
@@ -209,7 +207,7 @@ def process_file(file_obj, file_type):
             prompt_text = ("Extract all the details in this slide line by line if it is text and describe what "
                            "the images show if any in detail. Don't include any information irrelevant to the main slide content.")
             for img_url in image_urls:
-                extracted_texts.append(analyze_with_openrouter(prompt_text, img_url))
+                extracted_texts.append(analyze_with_gemini(prompt_text, img_url))
         elif file_type == "pdf":
             pdf_path = local_path
             image_urls = convert_pdf_to_images(pdf_path)
@@ -217,7 +215,7 @@ def process_file(file_obj, file_type):
             prompt_text = ("Extract all the details in this page line by line if it is text and describe images if any "
                            "in detail. Don't include any information irrelevant to the main page content.")
             for img_url in image_urls:
-                extracted_texts.append(analyze_with_openrouter(prompt_text, img_url))
+                extracted_texts.append(analyze_with_gemini(prompt_text, img_url))
         elif file_type == "docx":
             pdf_path = local_path.rsplit('.', 1)[0] + ".pdf"
             convert_docx_to_pdf(local_path, pdf_path)
@@ -227,13 +225,13 @@ def process_file(file_obj, file_type):
             prompt_text = ("Extract all details in this page line by line if text, and describe images if any in detail. "
                            "Don't include any information irrelevant to the main page content.")
             for img_url in image_urls:
-                extracted_texts.append(analyze_with_openrouter(prompt_text, img_url))
+                extracted_texts.append(analyze_with_gemini(prompt_text, img_url))
         elif file_type == "image":
             image_path = local_path
             image_data_url = get_image(image_path)
             os.remove(image_path)
             prompt_text = ("What's in this image? Don't include any information irrelevant to the main content.")
-            extracted_texts.append(analyze_with_openrouter(prompt_text, image_data_url))
+            extracted_texts.append(analyze_with_gemini(prompt_text, image_data_url))
         elif file_type == "video":
             # Process the video using the helper function
             result = process_video_file(file_obj)
@@ -273,11 +271,9 @@ Do not return any additional text. Only the final json.
 Text :
 ''' + solution
 
-    response = together_client.chat.completions.create(
-        model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    ans = response.choices[0].message.content
+    text_model = genai.GenerativeModel("gemini-1.5-flash")  # or gemini-pro
+    response = text_model.generate_content(prompt)
+    ans = response.text
     print(ans)
 
     match = re.search(r"\[(\s*{.*?}\s*)\]", ans, re.DOTALL)
@@ -414,6 +410,70 @@ def submit():
     
     
     return jsonify(eval_result)
+
+# Add this new endpoint to your Flask app
+from flask import request
+
+@app.route("/career_recommendations", methods=["POST"])
+def generate_career_recommendations():
+    try:
+        # Get user skills JSON from frontend
+        skill_data = request.get_json()
+        if not skill_data or "skills" not in skill_data:
+            return jsonify({"error": "Missing skills list"}), 400
+
+        skill_list = skill_data["skills"]
+
+        # Format the skill list as a string to pass to Gemini
+        formatted_skills = json.dumps(skill_list, indent=2)
+
+        prompt = '''
+You are an expert career advisor.
+Based on this user's skillset:
+
+{}
+
+Suggest 5 personalized career recommendations. Each recommendation should have:
+1. title (e.g., "Full Stack Developer")
+2. description (a brief description of the role and its responsibilities)
+3. nextSkills (list of 3-5 important skills to learn next E.g. ["React", "Node.js", "Docker"])
+4. growthPath (a typical progression for this role E.g "Junior Developer -> Mid-level Developer -> Senior Developer")
+5. matchPercentage (between 50-100)
+6. salaryRange (e.g., "Rs 10,00,000 - Rs 20,00,000")
+7. demandLevel (High, Medium, or Low)
+
+Respond ONLY as a list of 5 objects in this format:
+[
+  {{
+    "title": "...",
+    "description": "...",
+    "nextSkills": ["...", "..."],
+    "growthPath": "...",
+    "matchPercentage": 92,
+    "salaryRange": "Rs 10,00,000 - Rs 20,00,000",
+    "demandLevel": "High"
+  }},
+  ...
+]
+Do NOT add any extra commentary or explanation. Strictly output JSON.
+'''.format(formatted_skills)
+
+        text_model = genai.GenerativeModel("gemini-1.5-flash")
+        response = text_model.generate_content(prompt)
+        result = response.text
+
+        # Extract and parse JSON
+        match = re.search(r'\[.*\]', result.strip(), re.DOTALL)
+        if not match:
+            return jsonify({"error": "Invalid response from model"}), 500
+
+        recommendations = json.loads(match.group())
+        return jsonify(recommendations)
+
+    except Exception as e:
+        print("Gemini career recommendation error:", e)
+        return jsonify({"error": str(e)}), 500
+
 
 
 # --------------------------

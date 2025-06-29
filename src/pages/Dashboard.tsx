@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Brain, 
-  Upload, 
-  FileText, 
-  TreePine, 
-  List, 
-  Users, 
+import {
+  Brain,
+  Upload,
+  FileText,
+  TreePine,
+  List,
+  Users,
   TrendingUp,
   LogOut,
   User,
@@ -26,11 +26,13 @@ const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [currentView, setCurrentView] = useState<ViewMode>('upload');
   const [skills, setSkills] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [previewURL, setPreviewURL] = useState<string | null>(null);
 
   // Load existing skills on component mount
   useEffect(() => {
@@ -60,7 +62,7 @@ const Dashboard: React.FC = () => {
 
     setIsUploading(true);
     setError('');
-    
+
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -73,6 +75,8 @@ const Dashboard: React.FC = () => {
     } finally {
       setIsUploading(false);
     }
+    setUploadedFile(null);
+    setPreviewURL(null);
   };
 
   const navigationItems = [
@@ -94,7 +98,7 @@ const Dashboard: React.FC = () => {
                 <span className="text-2xl font-bold text-slate-800">Tessera</span>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 text-slate-600">
                 <User className="w-5 h-5" />
@@ -126,13 +130,12 @@ const Dashboard: React.FC = () => {
                     key={item.id}
                     onClick={() => !item.disabled && setCurrentView(item.id as ViewMode)}
                     disabled={item.disabled}
-                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all ${
-                      currentView === item.id
+                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all ${currentView === item.id
                         ? 'bg-blue-600 text-white'
                         : item.disabled
-                        ? 'text-slate-400 cursor-not-allowed'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
+                          ? 'text-slate-400 cursor-not-allowed'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
                   >
                     {item.icon}
                     <span className="font-medium">{item.label}</span>
@@ -186,14 +189,12 @@ const Dashboard: React.FC = () => {
               <div className="bg-white rounded-xl shadow-sm p-8">
                 <div className="text-center">
                   <FileText className="w-16 h-16 text-blue-600 mx-auto mb-6" />
-                  <h2 className="text-2xl font-bold text-slate-900 mb-4">
-                    Upload Your Documents
-                  </h2>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-4">Upload Your Documents</h2>
                   <p className="text-slate-600 mb-8 max-w-2xl mx-auto">
-                    Upload your resume, portfolio, or any professional documents. 
+                    Upload your resume, portfolio, or any professional documents.
                     Our AI will analyze them to extract and visualize your skills.
                   </p>
-                  
+
                   {/* Error Message */}
                   {error && (
                     <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-center space-x-2 max-w-md mx-auto">
@@ -201,16 +202,23 @@ const Dashboard: React.FC = () => {
                       <span className="text-red-700 text-sm">{error}</span>
                     </div>
                   )}
-                  
+
                   <div className="max-w-md mx-auto">
                     <input
                       ref={fileInputRef}
                       type="file"
-                      onChange={handleFileUpload}
-                      accept=".pdf,.doc,.docx,.txt"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setUploadedFile(file);
+                          setPreviewURL(URL.createObjectURL(file));
+                          handleFileUpload(e);
+                        }
+                      }}
+                      accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.mp4,.mp3"
                       className="hidden"
                     />
-                    
+
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploading}
@@ -228,11 +236,48 @@ const Dashboard: React.FC = () => {
                         </>
                       )}
                     </button>
-                    
+
                     <p className="text-sm text-slate-500 mt-4">
-                      Supported formats: PDF, DOC, DOCX, TXT, MP4, MP3.
+                      Supported formats: PDF, DOC, DOCX, TXT, JPG, PNG, MP4, MP3
                     </p>
                   </div>
+
+                  {/* Preview while uploading */}
+                  {isUploading && uploadedFile && previewURL && (
+                    <div className="mt-6 text-center space-y-4">
+                      <p className="text-sm text-slate-600">
+                        <strong>Uploading:</strong> {uploadedFile.name} ({(uploadedFile.size / 1024).toFixed(1)} KB)
+                      </p>
+
+                      {uploadedFile.type.startsWith('image/') && (
+                        <img src={previewURL} alt="Preview" className="max-h-64 mx-auto rounded shadow" />
+                      )}
+
+                      {uploadedFile.type === 'application/pdf' && (
+                        <div className="w-full max-w-4xl mx-auto mt-4">
+                          <iframe
+                            src={previewURL}
+                            title="PDF Preview"
+                            className="w-full h-[600px] border rounded-xl shadow-md"
+                          />
+                        </div>
+                      )}
+
+                      {uploadedFile.type.startsWith('audio/') && (
+                        <audio controls className="mx-auto">
+                          <source src={previewURL} type={uploadedFile.type} />
+                          Your browser does not support the audio element.
+                        </audio>
+                      )}
+
+                      {uploadedFile.type.startsWith('video/') && (
+                        <video controls className="w-full max-h-64 mx-auto rounded shadow">
+                          <source src={previewURL} type={uploadedFile.type} />
+                          Your browser does not support the video tag.
+                        </video>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

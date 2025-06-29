@@ -83,7 +83,7 @@ router.get('/compare', authenticateToken, async (req, res) => {
     // Get other users with their skills for comparison
     const result = await pool.query(`
       SELECT 
-        u.id, u.name, u.user_type, u.company, u.role,
+        u.id, u.name, u.user_type, u.company, u.role, u.institute,
         COALESCE(
           JSON_AGG(
             JSON_BUILD_OBJECT(
@@ -97,7 +97,7 @@ router.get('/compare', authenticateToken, async (req, res) => {
       FROM users u
       LEFT JOIN skills s ON u.id = s.user_id
       WHERE u.id != $1
-      GROUP BY u.id, u.name, u.user_type, u.company, u.role
+      GROUP BY u.id, u.name, u.user_type, u.company, u.role, u.institute
       HAVING COUNT(s.id) > 0
       LIMIT 20
     `, [req.user.id]);
@@ -105,8 +105,8 @@ router.get('/compare', authenticateToken, async (req, res) => {
     const users = result.rows.map(row => ({
       id: row.id.toString(),
       name: row.name,
-      role: row.role || `${row.user_type}`,
-      company: row.company,
+      role: row.role || `${row.user_type.charAt(0).toUpperCase()}${row.user_type.slice(1)}`,
+      company: row.company || row.institute,
       skills: row.skills
     }));
 
@@ -120,13 +120,33 @@ router.get('/compare', authenticateToken, async (req, res) => {
 // Mock file upload endpoint (simulates Flask API)
 router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
-    // Simulate processing delay
     const FLASK_API_URL = "http://127.0.0.1:5000";
+    const file = req.file;
     let mockSkillsData = {};
-    console.log("req", req.file);
-    const file = req.file; // Assuming file is sent as multipart/form-data
-    
+
+    // Call Flask API with file
+    try {
+      const form = new FormData();
+      form.append('file', fs.createReadStream(file.path), file.originalname);
+      form.append('filet', "pdf");
+
+      const response = await axios.post(`${FLASK_API_URL}/submit`, form, {
+        headers: {
+          ...form.getHeaders(),
+        },
+      });
+
+      console.log('Flask API response:', response.data);
+
       mockSkillsData = {
+        tree: response.data.tree,
+        list: response.data.list
+      };
+    } catch (error) {
+      console.warn('Flask API failed. Using default data.');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+       mockSkillsData = {
       tree: {
         title: "Skills",
         strength: 8,
@@ -174,57 +194,95 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
         { title: "AWS", category: "Tools", strength: 4 }
       ]
     };
-
-    
-    try{
-      const file = req.file;
-
-    const form = new FormData();
-    form.append('file', fs.createReadStream(file.path), file.originalname);
-    form.append('filet', "pdf")
-
-    const response = await axios.post('http://127.0.0.1:5000/submit', form, {
-      headers: {
-        ...form.getHeaders(),
-      },
-    });
-
-      console.log('Flask API response:', response.data);
-
-      mockSkillsData = {
-        tree: response.data.tree,
-        list: response.data.list
-      };
-    } catch (error) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
     }
-    
 
-    // Save to database
     const client = await pool.connect();
-    
     try {
       await client.query('BEGIN');
 
-      // Clear existing skills
-      await client.query('DELETE FROM skills WHERE user_id = $1', [req.user.id]);
-      await client.query('DELETE FROM skills_tree WHERE user_id = $1', [req.user.id]);
-
-      // Insert new skills
-      for (const skill of mockSkillsData.list) {
-        await client.query(
-          'INSERT INTO skills (user_id, title, category, strength) VALUES ($1, $2, $3, $4)',
-          [req.user.id, skill.title, skill.category, skill.strength]
-        );
+      // 1. Merge list skills
+      const existingSkillsRes = await client.query(
+        'SELECT title, category, strength FROM skills WHERE user_id = $1',
+        [req.user.id]
+      );
+      const existingSkillsMap = new Map();
+      for (const row of existingSkillsRes.rows) {
+        existingSkillsMap.set(`${row.title.toLowerCase()}::${row.category.toLowerCase()}`, row.strength);
       }
 
-      // Insert skills tree
+      for (const skill of mockSkillsData.list) {
+        const key = `${skill.title.toLowerCase()}::${skill.category.toLowerCase()}`;
+        if (!existingSkillsMap.has(key)) {
+          await client.query(
+            'INSERT INTO skills (user_id, title, category, strength) VALUES ($1, $2, $3, $4)',
+            [req.user.id, skill.title, skill.category, skill.strength]
+          );
+        } else {
+          const existingStrength = existingSkillsMap.get(key);
+          if (skill.strength > existingStrength) {
+            await client.query(
+              'UPDATE skills SET strength = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2 AND title = $3 AND category = $4',
+              [skill.strength, req.user.id, skill.title, skill.category]
+            );
+          }
+        }
+      }
+
+      // 2. Merge skill tree
+      const treeRes = await client.query(
+        'SELECT tree_data FROM skills_tree WHERE user_id = $1',
+        [req.user.id]
+      );
+
+      let mergedTree = mockSkillsData.tree;
+
+      const mergeSkillTrees = (a, b) => {
+        const mapify = (children = []) => Object.fromEntries(children.map(c => [c.title, c]));
+
+        const mergeNodes = (a, b) => {
+          const merged = {
+            title: a.title || b.title,
+            strength: Math.max(a.strength || 0, b.strength || 0),
+          };
+
+          const aMap = mapify(a.children);
+          const bMap = mapify(b.children);
+          const allKeys = new Set([...Object.keys(aMap), ...Object.keys(bMap)]);
+
+          const children = [];
+          for (const key of allKeys) {
+            if (aMap[key] && bMap[key]) {
+              children.push(mergeNodes(aMap[key], bMap[key]));
+            } else {
+              children.push(aMap[key] || bMap[key]);
+            }
+          }
+
+          if (children.length > 0) merged.children = children;
+
+          return merged;
+        };
+
+        return mergeNodes(a, b);
+      };
+
+      if (treeRes.rows.length > 0) {
+        const existingTree = treeRes.rows[0].tree_data;
+        mergedTree = mergeSkillTrees(existingTree, mockSkillsData.tree);
+      }
+
       await client.query(
-        'INSERT INTO skills_tree (user_id, tree_data) VALUES ($1, $2)',
-        [req.user.id, JSON.stringify(mockSkillsData.tree)]
+        `INSERT INTO skills_tree (user_id, tree_data)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id)
+         DO UPDATE SET tree_data = EXCLUDED.tree_data, updated_at = CURRENT_TIMESTAMP`,
+        [req.user.id, JSON.stringify(mergedTree)]
       );
 
       await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }

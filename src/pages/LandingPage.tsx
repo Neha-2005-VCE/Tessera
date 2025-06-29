@@ -97,9 +97,7 @@ const LandingPage: React.FC = () => {
                 Start Your Journey
                 <ChevronRight className="w-5 h-5 ml-2" />
               </button>
-              <button className="border-2 border-slate-300 hover:border-slate-400 text-slate-700 px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 hover:bg-white">
-                Watch Demo
-              </button>
+              
             </div>
           </div>
         </div>
@@ -206,7 +204,7 @@ const LandingPage: React.FC = () => {
             onClick={() => navigate('/auth')}
             className="bg-white text-blue-600 hover:bg-gray-100 px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 transform hover:scale-105 inline-flex items-center"
           >
-            Get Started Free
+            Get Started Now
             <ChevronRight className="w-5 h-5 ml-2" />
           </button>
         </div>
@@ -220,9 +218,7 @@ const LandingPage: React.FC = () => {
               <Brain className="w-8 h-8 text-blue-400" />
               <span className="text-2xl font-bold">Tessera</span>
             </div>
-            <div className="text-slate-400">
-              © 2024 Tessera. All rights reserved.
-            </div>
+  
           </div>
         </div>
       </footer>

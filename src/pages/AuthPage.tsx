@@ -56,7 +56,7 @@ const AuthPage: React.FC = () => {
 
         await register(userData);
       }
-      
+
       navigate('/dashboard');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred');
@@ -94,8 +94,8 @@ const AuthPage: React.FC = () => {
                 {authMode === 'login' ? 'Welcome Back' : 'Join Tessera'}
               </h2>
               <p className="text-slate-600">
-                {authMode === 'login' 
-                  ? 'Sign in to your account to continue' 
+                {authMode === 'login'
+                  ? 'Sign in to your account to continue'
                   : 'Create your account to get started'
                 }
               </p>
@@ -113,21 +113,19 @@ const AuthPage: React.FC = () => {
             <div className="flex bg-slate-100 rounded-lg p-1 mb-6">
               <button
                 onClick={() => setAuthMode('login')}
-                className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
-                  authMode === 'login'
+                className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${authMode === 'login'
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 Login
               </button>
               <button
                 onClick={() => setAuthMode('signup')}
-                className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
-                  authMode === 'signup'
+                className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${authMode === 'signup'
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 Sign Up
               </button>
@@ -143,11 +141,10 @@ const AuthPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setUserType('student')}
-                    className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
-                      userType === 'student'
+                    className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${userType === 'student'
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
                         : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                    }`}
+                      }`}
                   >
                     <GraduationCap className="w-8 h-8 mb-2" />
                     <span className="font-medium">Student</span>
@@ -155,11 +152,10 @@ const AuthPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setUserType('professional')}
-                    className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
-                      userType === 'professional'
+                    className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${userType === 'professional'
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
                         : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                    }`}
+                      }`}
                   >
                     <Briefcase className="w-8 h-8 mb-2" />
                     <span className="font-medium">Professional</span>
@@ -243,18 +239,24 @@ const AuthPage: React.FC = () => {
                       Graduation Year
                     </label>
                     <select
-                      id="graduationYear"
-                      name="graduationYear"
-                      required
-                      value={formData.graduationYear}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    >
-                      <option value="">Select graduation year</option>
-                      {Array.from({ length: 10 }, (_, i) => 2024 + i).map(year => (
-                        <option key={year} value={year}>{year}</option>
-                      ))}
-                    </select>
+  id="graduationYear"
+  name="graduationYear"
+  required
+  value={formData.graduationYear}
+  onChange={handleInputChange}
+  className={`w-full px-4 py-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white appearance-none ${
+    formData.graduationYear === "" ? "text-slate-400" : "text-slate-700"
+  }`}
+>
+  <option value="" disabled hidden>
+    Select graduation year
+  </option>
+  {Array.from({ length: 10 }, (_, i) => 2025 + i).map((year) => (
+    <option key={year} value={year}>
+      {year}
+    </option>
+  ))}
+</select>
                   </div>
                 </>
               )}
