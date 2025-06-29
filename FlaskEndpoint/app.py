@@ -18,7 +18,7 @@ import re
 import google.generativeai as genai
 from PIL import Image
 
-genai.configure(api_key="AIzaSyCImieoM8T1olcyduIaBQSmvLgeAF2o_RI")
+genai.configure(api_key="API-KEY")
 
 model = genai.GenerativeModel("gemini-2.5-flash")
 
@@ -30,9 +30,9 @@ CORS(app)
 # --------------------------
 
 
-OPENROUTER_API_KEY = "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"
-TOGETHER_API_KEY = "094ad5f71e654a605fb914359d9cda2f11e66f55e00d8d9ffc416d90d11fd723"
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+TOGETHER_API_KEY = "API-KEY"
+
 
 # Initialize Together API client
 together_client = Together(api_key=TOGETHER_API_KEY)
@@ -74,32 +74,6 @@ def get_image(image_path: str) -> str:
         base64_image = base64.b64encode(image_file.read()).decode("utf-8")
     return f"data:image/jpeg;base64,{base64_image}"
 
-def analyze_with_openrouter(prompt_text, image_data_url):
-    """Call OpenRouter with a given prompt and image URL."""
-    print("Calling OpenRouter with prompt:", prompt_text)
-    response = requests.post(
-        url=OPENROUTER_API_URL,
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        data=json.dumps({
-            "model": "mistralai/mistral-small-3.2-24b-instruct:free",
-            "messages": [
-                {"role": "user", "content": [
-                    {"type": "text", "text": prompt_text},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ]}
-            ],
-        }),
-    )
-    try:
-        result = response.json()
-        print("OpenRouter response:", result)
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        print("Error in OpenRouter response:", e)
-        return f"Error processing: {e}"
     
 def analyze_with_gemini(prompt_text, image_data_url):
     print("Calling Gemini with prompt:", prompt_text)
@@ -131,7 +105,7 @@ def process_video_file(file_obj):
         base64_image = base64.b64encode(buffer).decode('utf-8')
         return f"data:image/jpeg;base64,{base64_image}"
 
-    # Helper: get a description of a frame by calling OpenRouter
+    # Helper: get a description of a frame
     def get_image_description(image_data_url):
         return analyze_with_gemini("Describe this frame in detail.", image_data_url)
 
