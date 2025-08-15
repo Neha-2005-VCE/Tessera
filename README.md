@@ -47,7 +47,7 @@
 
 ```bash
 # Clone the repo
-git clone https://github.com/NikitaKiran/coachinproject.git
+https://github.com/Neha-2005-VCE/Tessera.git
 cd coachinproject
 
 
