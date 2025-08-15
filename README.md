@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 
 # Tessera - Virtual Skills Profiling Platform
 
@@ -86,6 +85,3 @@ npm run dev
 - ✅ Real-time collaboration on skill trees
 - ⏳ Resume ranking against job descriptions
 
-=======
-# Tessera
->>>>>>> 411d4a9f88f880096d1a9b00153b3241dc4b5d95
